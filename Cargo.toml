@@ -1,0 +1,22 @@
+[package]
+name = "chatserver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tonic = "0.11"
+prost = "0.12"
+log = "0.4.21"
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"]}
+chrono = "0.4"
+
+[build-dependencies]
+tonic-build = "0.11"
+
+[[bin]]
+name = "server"
+path = "src/server.rs"
+
+[[bin]]
+name = "client"
+path = "src/client.rs"

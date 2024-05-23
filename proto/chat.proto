@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package chat;
+
+message SendRequest {
+    Client client = 1;
+    Message message = 2;
+    string roomname = 3;
+}
+
+message HeartBeatRequest {
+    Client client = 1;
+    string roomname = 2;
+    // 用户目前看到的消息条数，服务器会将此与已有的比较
+    // 如果服务器判断房间已有的消息多于此数，那么会将新消息返回给客户
+    uint64 msgnum = 3;
+}
+
+service Chat {
+    // 心跳，客户端每隔一段时间会调用此rpc来：
+    // 1. 确认与服务器的连接正常
+    // 2. 获取他人新发的信息
+    rpc heartbeat (HeartBeatRequest) returns (ServerResponse) {}
+    // 发送信息
+    rpc send (SendRequest) returns (ServerResponse) {} 
+}
+
+// Client info
+
+message Client {
+    Device device = 1;
+    User user = 2;
+}
+
+// 一个客户端对应一个唯一的设备
+message Device {
+    string serial_number = 1;
+}
+
+enum Gender {
+    MALE = 0;
+    FEMALE = 1;
+}
+
+message User {
+    optional string name = 1;
+    optional Gender gender = 2;
+}
+
+// Server response
+
+message ServerResponse {
+    string extra_info = 1;
+    repeated Message messages = 2;
+}
+
+enum MessageType {
+    Text = 0;
+    Image = 1;
+    Video = 2;
+    Unknown = 3;
+}
+
+message Message {
+    // 每条信息有三个字段：
+    // 1. 类型
+    // 2. 字节码
+    // 3. 发这条信息的client_id
+    // 4. 时间戳
+    MessageType msg_type = 1;
+    bytes bytes = 2;
+    Client client = 3;
+    uint64 time = 4;
+}
+
+// room 
+message Room {
+    string name = 1;
+    repeated Message messages = 2;
+    uint64 created_time = 3;
+    Client manner = 4;
+    repeated Client clients = 5;
+    bool history_visible = 6;
+}
