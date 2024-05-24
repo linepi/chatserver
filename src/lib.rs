@@ -2,7 +2,6 @@ use tonic::{Request, Response, Status};
 use chat::chat_server::Chat;
 use std::sync::RwLock;
 use std::sync::Arc;
-use std::sync::atomic;
 
 pub mod common;
 
@@ -12,32 +11,53 @@ pub mod chat {
 
 // client lib
 
+#[derive(Clone)]
 pub struct Client {
-    pub channel: chat::chat_client::ChatClient<tonic::transport::Channel>,
+    pub state: Arc<RwLock<ClientState>>,
     pub addr: String,
     pub username: String,
     pub roomname: String,
-    pub msgnum: atomic::AtomicU64,
+}
+
+pub struct ClientState {
+    pub channel: chat::chat_client::ChatClient<tonic::transport::Channel>,
+    pub lastupdate_time: u64,
 }
 
 impl Client {
-    pub async fn update(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let response_wrapper = self.channel.heartbeat(
-            tonic::Request::new(chat::HeartBeatRequest::build(self))).await?;
+    pub async fn update(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let request = chat::HeartBeatRequest::build(self);
+        let mut state = self.state.write().unwrap();
+
+        let response_wrapper = state.channel.heartbeat(tonic::Request::new(request)).await?;
+
+        let mut printlines = Vec::<String>::new();
         let response = response_wrapper.get_ref();
         if !response.extra_info.is_empty() {
-            println!("{}", response.extra_info);
+            printlines.push(response.extra_info.clone());
         }
-        self.msgnum.fetch_add(response.messages.len() as u64, atomic::Ordering::SeqCst);
         for msg in response.messages.iter() {
-            println!("{}", msg); 
+            let msg_username = msg.client.as_ref().unwrap().user.as_ref().unwrap().name.as_ref().unwrap();
+            if *msg_username != self.username {
+                printlines.push(format!("{}", msg).clone());
+            }
         } 
+        
+        if printlines.len() > 0 {
+            print!("\r");
+            for line in printlines {
+                println!("{line}");
+            }
+            print!("{}: ", self.username);
+        }
+
+        state.lastupdate_time = common::now_milli_seconds();
         Ok(())
     }
 
-    pub async fn send(&mut self, s: &String) -> Result<(), Box<dyn std::error::Error>> {
-        self.channel.send(tonic::Request::new(chat::SendRequest::build(self, &s))).await?;
-        self.msgnum.fetch_add(1, atomic::Ordering::SeqCst);
+    pub async fn send(&self, s: &String) -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = self.state.write().unwrap();
+        state.channel.send(tonic::Request::new(chat::SendRequest::build(self, &s))).await?;
         Ok(())
     }
 }
@@ -54,7 +74,7 @@ impl chat::HeartBeatRequest {
                 device: Some(chat::Device::default()),
             }),
             roomname: cli.roomname.clone(),
-            msgnum: cli.msgnum.load(atomic::Ordering::SeqCst),
+            lasttime: cli.state.read().unwrap().lastupdate_time,
         }
     }
 }
@@ -192,8 +212,10 @@ impl Chat for MyChatServer {
                 room.clients.push(hb_req.client.unwrap().clone());
                 response.messages = room.messages.clone();
             } else {
-                for i in (hb_req.msgnum as usize)..room.messages.len() {
-                    response.messages.push(room.messages[i].clone()); 
+                for i in 0..room.messages.len() {
+                    if room.messages[i].time > hb_req.lasttime {
+                        response.messages.push(room.messages[i].clone()); 
+                    }
                 }
             }
         }

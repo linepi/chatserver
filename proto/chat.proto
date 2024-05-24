@@ -11,9 +11,8 @@ message SendRequest {
 message HeartBeatRequest {
     Client client = 1;
     string roomname = 2;
-    // 用户目前看到的消息条数，服务器会将此与已有的比较
-    // 如果服务器判断房间已有的消息多于此数，那么会将新消息返回给客户
-    uint64 msgnum = 3;
+    // 上一次心跳的时间
+    uint64 lasttime = 3;
 }
 
 service Chat {

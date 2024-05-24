@@ -59,4 +59,35 @@ mod tests {
         assert_eq!(a, b);
         assert_eq!(&a, &b);
     }
+
+    #[test]
+    fn rc_test() {
+        use std::rc::Rc;
+        let a = Rc::new(String::from("hello, world"));
+        let b = Rc::clone(&a);
+
+        assert_eq!(2, Rc::strong_count(&a));
+        assert_eq!(Rc::strong_count(&a), Rc::strong_count(&b));
+        assert_eq!(a, b);
+
+        let a = Rc::new(String::from("test ref counting"));
+        println!("count after creating a = {}", Rc::strong_count(&a));
+        let b =  Rc::clone(&a);
+        println!("count after creating b = {}", Rc::strong_count(&a));
+        {
+            let c =  Rc::clone(&a);
+            println!("count after creating c = {}", Rc::strong_count(&c));
+        }
+        println!("count after c goes out of scope = {}", Rc::strong_count(&a));
+    }
+
+    #[test]
+    fn cell_test() {
+        use std::cell::Cell;
+        let c = Cell::new("asdf");
+        let one = c.get();
+        c.set("qwer");
+        let two = c.get();
+        println!("{},{}", one, two);
+    }
 }

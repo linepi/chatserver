@@ -1,6 +1,8 @@
 use chatserver::chat;
 use chatserver::Client;
+use chatserver::ClientState;
 use tokio::sync::Mutex;
+use std::sync::mpsc;
 
 fn prompt(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
     print!("{prompt}");
@@ -26,29 +28,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let roomname = "aroom".to_string();
 
     let tmp = chat::chat_client::ChatClient::connect(format!("http://{addr}")).await?;
-    let mut client = Mutex::new(Client {
+
+    let clientstate = std::sync::Arc::new(std::sync::RwLock::new(ClientState{
         channel: tmp,
+        lastupdate_time: 0,
+    }));
+
+    let client = Client {
+        state: clientstate,
         addr,
         username: username.clone(),
         roomname,
-        msgnum: 0.into(),
+    };
+
+    client.update().await?;
+
+    let (sender, receiver) = mpsc::channel();
+
+    std::thread::spawn(move || {
+        loop {
+            let inputmsg = prompt(format!("{}: ", &username).as_str()).unwrap();
+            if inputmsg.is_empty() {
+                continue;
+            }
+            sender.send(inputmsg).unwrap();
+        }
     });
 
-    client.get_mut().update().await?;
-
-    // std::thread::spawn(|| {
-    //     loop {
-    //         client.lock().await;
-    //         client.get_mut().update();
-    //         std::thread::sleep(std::time::Duration::from_millis(100));
-    //     }
-    // });
-
     loop {
-        let inputmsg = prompt(format!("{}: ", &username).as_str())?;
-        // let _ = client.lock().await;
-        client.get_mut().send(&inputmsg).await?;
-        client.get_mut().update().await?;
+        let tosd = receiver.try_recv();
+        if tosd.is_ok() {
+            client.send(&tosd.unwrap()).await?;
+        } else {
+            client.update().await?;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1000));
     }
 }
 
