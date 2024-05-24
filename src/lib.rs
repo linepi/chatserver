@@ -33,9 +33,10 @@ impl Client {
 
         let mut printlines = Vec::<String>::new();
         let response = response_wrapper.get_ref();
-        if !response.extra_info.is_empty() {
-            printlines.push(response.extra_info.clone());
-        }
+        assert!(response.extra_info.is_empty());
+        // if  {
+        //     printlines.push(response.extra_info.clone());
+        // }
         for msg in response.messages.iter() {
             let msg_username = msg.client.as_ref().unwrap().user.as_ref().unwrap().name.as_ref().unwrap();
             if *msg_username != self.username {
@@ -49,6 +50,8 @@ impl Client {
                 println!("{line}");
             }
             print!("{}: ", self.username);
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
         }
 
         state.lastupdate_time = common::now_milli_seconds();
@@ -131,20 +134,19 @@ impl chat::Room {
 
 #[derive(Default)]
 pub struct MyChatServer {
-    state: Arc<RwLock<ServerState>>,
+    state: RwLock<ServerState>,
 }
 
 #[derive(Default)]
 pub struct ServerState {
     // map: HashMap<i32, chat::Client>,
-    rooms: Vec<chat::Room>,
+    rooms: Vec<RwLock<chat::Room>>,
 }
 
 impl MyChatServer {
     pub fn init() -> Result<Self, Box<dyn std::error::Error>> {
         let serv = MyChatServer::default();
         {
-            let mut state = serv.state.write().unwrap();
             // for simplisity, load all roominfos
             let readdir = std::fs::read_dir("data")?;
             for diri in readdir {
@@ -152,7 +154,7 @@ impl MyChatServer {
                 let path = entry.path();
                 let pathstr = path.to_str().unwrap().to_string();
                 if pathstr.contains("room") {
-                    state.rooms.push(chat::Room::from_file(&pathstr).unwrap());
+                    serv.state.write().unwrap().rooms.push(RwLock::new(chat::Room::from_file(&pathstr).unwrap()));
                 }
             }
         }
@@ -163,13 +165,12 @@ impl MyChatServer {
 impl Drop for MyChatServer {
     // serialize all rooms
     fn drop(&mut self) {
-        let state = self.state.read().unwrap();
-        for room in state.rooms.iter() {
-            let _ = room.to_file(&format!("data/room_{}", &room.name));
+        for room in self.state.read().unwrap().rooms.iter() {
+            let room_reader = room.read().unwrap();
+            let _ = room_reader.to_file(&format!("data/room_{}", &room_reader.name));
         }
     }
 }
-
 
 #[tonic::async_trait]
 impl Chat for MyChatServer {
@@ -188,33 +189,41 @@ impl Chat for MyChatServer {
             return Err(Status::invalid_argument("roomname is none"));
         }
 
-        let mut state = self.state.write().unwrap();
-        let room = state.rooms.iter_mut().find(|x| x.name == hb_req.clone().roomname);
+        let state = self.state.read().unwrap();
+        let room = state.rooms.iter().find(|x| {
+            let room_reader = x.read().unwrap();
+            room_reader.name == hb_req.clone().roomname
+        });
 
         let mut response = chat::ServerResponse::default();
         if room.is_none() {
             // no room found, create it
             let now = common::now_milli_seconds();
-            state.rooms.push(chat::Room{
+            // unlock the read lock to create write lock 
+            drop(state);
+            let mut state_writer = self.state.write().unwrap();
+            state_writer.rooms.push(RwLock::new(chat::Room{
                 created_time: now,
                 history_visible: true,
                 manner: hb_req.client.clone(),
                 messages: vec![],
                 clients: vec![hb_req.client.clone().unwrap()],
                 name: hb_req.roomname,
-            });
+            }));
         } else {
             // room found, check if client exists in this room
-            let room: &mut chat::Room = room.unwrap();
-            let client_exist_in_room = common::client_in_room(hb_req.client.as_ref().unwrap(), room);
+            let room_reader = room.unwrap().read().unwrap();
+            let client_exist_in_room = common::client_in_room(hb_req.client.as_ref().unwrap(), &room_reader);
 
             if !client_exist_in_room {
-                room.clients.push(hb_req.client.unwrap().clone());
-                response.messages = room.messages.clone();
+                drop(room_reader);
+                let mut room_writer = room.unwrap().write().unwrap();
+                room_writer.clients.push(hb_req.client.unwrap().clone());
+                response.messages = room_writer.messages.clone();
             } else {
-                for i in 0..room.messages.len() {
-                    if room.messages[i].time > hb_req.lasttime {
-                        response.messages.push(room.messages[i].clone()); 
+                for i in 0..room_reader.messages.len() {
+                    if room_reader.messages[i].time > hb_req.lasttime {
+                        response.messages.push(room_reader.messages[i].clone()); 
                     }
                 }
             }
@@ -241,14 +250,18 @@ impl Chat for MyChatServer {
             return Err(Status::invalid_argument("roomname is empty"));
         }
 
-        let mut state = self.state.write().unwrap();
-        let room = state.rooms.iter_mut().find(|x| x.name == sd_req.clone().roomname);
+        let state = self.state.read().unwrap();
+        let room = state.rooms.iter().find(|x| {
+            let room_reader = x.read().unwrap();
+            room_reader.name == sd_req.clone().roomname
+        });
         if room.is_none() {
             log::error!("room is none");
             return Err(Status::invalid_argument("room is none"));
         }
-        let room: &mut chat::Room = room.unwrap();
-        let client_exist_in_room = common::client_in_room(sd_req.client.as_ref().unwrap(), room);
+
+        let mut room_writer = room.unwrap().write().unwrap();
+        let client_exist_in_room = common::client_in_room_w(sd_req.client.as_ref().unwrap(), &room_writer);
 
         if !client_exist_in_room {
             let msg = format!("client not exist in room {}", sd_req.roomname);
@@ -257,7 +270,8 @@ impl Chat for MyChatServer {
         }
 
         let message = &sd_req.message.unwrap();
-        room.messages.push(message.clone());
+
+        room_writer.messages.push(message.clone());
 
         Ok(Response::new(chat::ServerResponse::default()))
     }

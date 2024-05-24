@@ -1,5 +1,7 @@
 use std::time::*;
 use crate::chat;
+use std::sync::RwLockReadGuard;
+use std::sync::RwLockWriteGuard;
 
 pub fn now_milli_seconds() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis() as u64
@@ -27,7 +29,17 @@ pub fn client_equal(c1: &chat::Client, c2: &chat::Client) -> bool{
     return false;
 }
 
-pub fn client_in_room(client: &chat::Client, room: &chat::Room) -> bool {
+pub fn client_in_room(client: &chat::Client, room: &RwLockReadGuard<chat::Room>) -> bool {
+    for c in room.clients.iter() {
+        // 目前仅通过username来判断client是否在room里
+        if client_equal(c, client) {
+            return true;
+        }
+    }
+    return false;
+}
+
+pub fn client_in_room_w(client: &chat::Client, room: &RwLockWriteGuard<chat::Room>) -> bool {
     for c in room.clients.iter() {
         // 目前仅通过username来判断client是否在room里
         if client_equal(c, client) {
