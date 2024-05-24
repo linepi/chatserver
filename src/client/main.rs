@@ -1,8 +1,4 @@
-use chatserver::chat;
-use chatserver::Client;
-use chatserver::ClientState;
-use tokio::sync::Mutex;
-use std::sync::mpsc;
+use chatserver::client::clib;
 
 fn prompt(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
     print!("{prompt}");
@@ -19,22 +15,37 @@ fn prompt(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
     Ok(input.trim().to_string())
 }
 
+fn random_name() -> String {
+    use rand::{Rng, thread_rng};
+    let mut rng = thread_rng();
+    let res: Vec<u8> = (0..5).map(|_| {
+        loop {
+            let char = rng.gen::<u8>();
+            if char.is_ascii_digit() {
+                return char;
+            }
+        }
+    }).collect();
+    String::from_utf8(res).unwrap()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let addr = prompt("chat server address: ").unwrap();
     let addr = "localhost:15535".to_string();
-    let username = prompt("give your username: ").unwrap();
-    // let roomname = prompt("give roomname to create(or enter): ").unwrap();
-    let roomname = "aroom".to_string();
+    // let username = prompt("give your username: ").unwrap();
+    let username = random_name();
+    let roomname = prompt("give roomname to create(or enter): ").unwrap();
+    // let roomname = "aroom".to_string();
 
-    let tmp = chat::chat_client::ChatClient::connect(format!("http://{addr}")).await?;
+    let tmp = chatserver::chat::chat_client::ChatClient::connect(format!("http://{addr}")).await?;
 
-    let clientstate = std::sync::Arc::new(std::sync::RwLock::new(ClientState{
+    let clientstate = std::sync::Arc::new(std::sync::RwLock::new(clib::ClientState{
         channel: tmp,
         lastupdate_time: 0,
     }));
 
-    let client = Client {
+    let client = clib::Client {
         state: clientstate,
         addr,
         username: username.clone(),
@@ -43,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     client.update().await?;
 
-    let (sender, receiver) = mpsc::channel();
+    let (sender, receiver) = std::sync::mpsc::channel();
 
     std::thread::spawn(move || {
         loop {
@@ -62,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             client.update().await?;
         }
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }
 
