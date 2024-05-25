@@ -98,6 +98,7 @@ message Message {
 message RoomInfo {
     string name = 1;
     Client manner = 2;
+    repeated string online_users = 3;
 }
 
 // room 

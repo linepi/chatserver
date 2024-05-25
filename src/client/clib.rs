@@ -4,8 +4,6 @@ use crate::chat;
 use crate::common;
 use colored::Colorize;
 
-
-
 #[derive(Clone)]
 pub struct Client {
     pub state: Arc<RwLock<ClientState>>,
@@ -80,6 +78,9 @@ impl Client {
         let mut state = self.state.write().unwrap();
         let cur_roomname = state.cur_roomname.clone().unwrap();
         state.channel.exitroom(tonic::Request::new(self.er_req(cur_roomname))).await?;
+        state.lastupdate_time = 0;
+        state.cur_roomname = None;
+        state.msgnum = 0;
         Ok(())
     }
 
@@ -88,7 +89,14 @@ impl Client {
         let response_wrapper = state.channel.getrooms(tonic::Request::new(self.gr_req())).await?;
         let response = response_wrapper.get_ref();
         for roominfo in response.roominfos.iter() {
-            println!("\t{} (manner {})", &roominfo.name, &roominfo.manner.as_ref().unwrap().username())
+            print!("\t{} ({}, online: [", &roominfo.name, &roominfo.manner.as_ref().unwrap().username().bold());
+            for i in 0..roominfo.online_users.len() {
+                print!("{}", roominfo.online_users[i]);
+                if i != roominfo.online_users.len() - 1 {
+                    print!(",");
+                } 
+            }
+            println!("])");
         }
         Ok(())
     }

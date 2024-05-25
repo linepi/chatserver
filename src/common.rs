@@ -104,4 +104,16 @@ mod tests {
         let two = c.get();
         println!("{},{}", one, two);
     }
+
+    #[test]
+    fn map_test() {
+        use std::collections::HashMap;
+        let mut m = HashMap::<i32, i32>::new();
+        m.insert(3, 4);
+        assert_eq!(*m.get(&3).unwrap(), 4);
+        m.insert(3, 3);
+        assert_eq!(*m.get(&3).unwrap(), 3);
+        m.remove(&3);
+        assert_eq!(m.get(&3), None);
+    }
 }
