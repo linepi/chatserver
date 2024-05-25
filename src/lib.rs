@@ -8,6 +8,7 @@ pub mod chat {
 
 use log::{Record, Level, Metadata};
 use log::{SetLoggerError, LevelFilter};
+use colored::Colorize;
 
 struct SimpleLogger;
 
@@ -38,7 +39,7 @@ impl std::fmt::Display for chat::Message {
         // let milli =  self.time;
         let msg = String::from_utf8(self.bytes.clone()).unwrap();
         // write!(f, "[{}] {}: {}", common::human_milli_seconds(milli), username, msg)?;
-        write!(f, "{}: {}", username, msg)?;
+        write!(f, "{}: {}", username.green().bold(), msg)?;
         Ok(())
     } 
 }

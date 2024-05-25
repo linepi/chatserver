@@ -2,6 +2,7 @@ use std::sync::RwLock;
 use std::sync::Arc;
 use crate::chat;
 use crate::common;
+use colored::Colorize;
 
 
 
@@ -36,13 +37,8 @@ impl Client {
         let mut printlines = Vec::<String>::new();
 
         let response = response_wrapper.get_ref();
-        let mut print_username = true;
         if !response.extra_info.is_empty() {
-            if response.extra_info == "1" {
-                print_username = false;
-            } else {
-                printlines.push(response.extra_info.clone());
-            }
+            printlines.push(response.extra_info.clone());
         }
         for msg in response.messages.iter() {
             let msg_username = msg.client.as_ref().unwrap().user.as_ref().unwrap().name.as_ref().unwrap();
@@ -56,9 +52,7 @@ impl Client {
             for line in printlines {
                 println!("{line}");
             }
-            if print_username {
-                print!("{}: ", self.username);
-            }
+            print!("{}: ", self.username.yellow());
             use std::io::Write;
             let _ = std::io::stdout().flush();
         }

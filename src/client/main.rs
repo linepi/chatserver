@@ -102,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let username = client.username.clone();
             let handle = std::thread::spawn(move || {
                 loop {
-                    let inputmsg = prompt(format!("{}: ", username).as_str()).unwrap();
+                    let inputmsg = prompt(format!("{}: ", username.yellow()).as_str()).unwrap();
                     if inputmsg.is_empty() {
                         continue;
                     }

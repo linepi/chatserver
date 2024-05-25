@@ -12,6 +12,7 @@ pub struct MyChatServer {
 #[derive(Default)]
 pub struct ServerState {
     rooms: Vec<RwLock<chat::Room>>,
+    uptime: u64,
 }
 
 impl MyChatServer {
@@ -29,6 +30,7 @@ impl MyChatServer {
                 }
             }
         }
+        serv.state.write().unwrap().uptime = common::now_milli_seconds();
         Ok(serv)
     }
 }
@@ -36,6 +38,12 @@ impl MyChatServer {
 impl Drop for MyChatServer {
     // serialize all rooms
     fn drop(&mut self) {
+        self.serialize();
+    }
+}
+
+impl MyChatServer {
+    fn serialize(&self) {
         for room in self.state.read().unwrap().rooms.iter() {
             let room_reader = room.read().unwrap();
             let _ = room_reader.to_file(&format!("data/room_{}", &room_reader.name));
@@ -79,7 +87,7 @@ impl Chat for MyChatServer {
                 let mut room_writer = room.unwrap().write().unwrap();
                 room_writer.clients.push(req.client.unwrap().clone());
                 response.messages = room_writer.messages.clone();
-                response.extra_info = "1".to_string();
+                // response.extra_info = "1".to_string();
             } else {
                 for i in 0..room_reader.messages.len() {
                     if room_reader.messages[i].time > req.lasttime {
@@ -96,6 +104,8 @@ impl Chat for MyChatServer {
         &self, 
         request: Request<chat::SendRequest>
     ) -> Result<Response<chat::ServerResponse>, Status> {
+        self.serialize();
+
         log::info!("Got a send request from {:?}", request.remote_addr());
         let req = request.into_inner();
         if req.client.is_none() {
