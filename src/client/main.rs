@@ -51,6 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         channel: ChatClient::connect(format!("http://{addr}")).await?,
         lastupdate_time: 0,
         cur_roomname: None,
+        msgnum: 0,
     }));
 
     println!("Connected to {}!", SERVER_ADDR);
@@ -108,7 +109,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     sender.send(inputmsg.clone()).unwrap();
                     if inputmsg == "exit()" {
-                        dbg!(inputmsg);
                         break;
                     }
                 }

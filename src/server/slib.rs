@@ -87,13 +87,10 @@ impl Chat for MyChatServer {
                 let mut room_writer = room.unwrap().write().unwrap();
                 room_writer.clients.push(req.client.unwrap().clone());
                 response.messages = room_writer.messages.clone();
-                // response.extra_info = "1".to_string();
             } else {
-                for i in 0..room_reader.messages.len() {
-                    if room_reader.messages[i].time > req.lasttime {
-                        response.messages.push(room_reader.messages[i].clone()); 
-                        log::info!("client [{}] recv new msg", username);
-                    }
+                for i in (req.msgnum as usize)..room_reader.messages.len() {
+                    response.messages.push(room_reader.messages[i].clone()); 
+                    log::info!("client [{}] recv new msg", username);
                 }
             }
         }

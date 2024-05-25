@@ -15,6 +15,7 @@ message HeartBeatRequest {
     optional string room_password = 3;
     // 上一次心跳的时间
     uint64 lasttime = 4;
+    uint32 msgnum = 5;
 }
 
 message GetRoomsRequest {

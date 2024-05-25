@@ -25,6 +25,7 @@ pub struct ClientState {
     pub channel: chat::chat_client::ChatClient<tonic::transport::Channel>,
     pub lastupdate_time: u64,
     pub cur_roomname: Option<String>,
+    pub msgnum: u32,
 }
 
 impl Client {
@@ -58,6 +59,7 @@ impl Client {
         }
 
         state.lastupdate_time = lastupdate_time;
+        state.msgnum += response.messages.len() as u32;
         state.cur_roomname = self.req.roomname.clone();
         Ok(())
     }
@@ -103,6 +105,7 @@ impl Client {
             roomname: self.req.roomname.clone().unwrap(),
             room_password: self.req.room_password.clone(), 
             lasttime: self.state.read().unwrap().lastupdate_time,
+            msgnum: self.state.read().unwrap().msgnum,
         }
     }
 
