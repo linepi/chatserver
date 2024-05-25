@@ -1,5 +1,6 @@
 use chatserver::client::clib;
-
+use colored::Colorize;
+use chatserver::chat::chat_client::ChatClient;
 fn prompt(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
     print!("{prompt}");
     use std::io::Write;
@@ -29,52 +30,117 @@ fn random_name() -> String {
     String::from_utf8(res).unwrap()
 }
 
+const SERVER_ADDR: &str = "localhost:15535";
+
+fn dump_usage() {
+    println!("{}", "Usage: ".green());
+    println!("\tcreate <roomname> [password] [history_visible(y/n)]");
+    println!("\texit -- let it go");
+    println!("\tlist -- list rooms");
+    println!("\tjoin <roomname> [password]");
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let addr = prompt("chat server address: ").unwrap();
-    let addr = "localhost:15535".to_string();
+    let addr = SERVER_ADDR.to_string();
     // let username = prompt("give your username: ").unwrap();
     let username = random_name();
-    let roomname = prompt("give roomname to create(or enter): ").unwrap();
-    // let roomname = "aroom".to_string();
-
-    let tmp = chatserver::chat::chat_client::ChatClient::connect(format!("http://{addr}")).await?;
 
     let clientstate = std::sync::Arc::new(std::sync::RwLock::new(clib::ClientState{
-        channel: tmp,
+        channel: ChatClient::connect(format!("http://{addr}")).await?,
         lastupdate_time: 0,
+        cur_roomname: None,
     }));
 
-    let client = clib::Client {
+    println!("Connected to {}!", SERVER_ADDR);
+    println!();
+
+    let mut client = clib::Client {
+        req: clib::ClientReq::default(),
         state: clientstate,
-        addr,
         username: username.clone(),
-        roomname,
     };
 
-    client.update().await?;
-
-    let (sender, receiver) = std::sync::mpsc::channel();
-
-    std::thread::spawn(move || {
-        loop {
-            let inputmsg = prompt(format!("{}: ", &username).as_str()).unwrap();
-            if inputmsg.is_empty() {
-                continue;
-            }
-            sender.send(inputmsg).unwrap();
-        }
-    });
+    println!("{}", "Welcome to chat room!".cyan().bold());
+    dump_usage();
 
     loop {
-        let tosd = receiver.try_recv();
-        if tosd.is_ok() {
-            client.send(&tosd.unwrap()).await?;
-        } else {
-            client.update().await?;
+        let input = prompt("> ").unwrap();
+        let args: Vec<String> = input.split_whitespace().map(|s| s.to_string()).collect();
+
+        if args.len() == 0 {
+            continue;
         }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        if args[0] == "create" {
+            client.req = clib::ClientReq {
+                roomname: Some(args[1].clone()),
+                room_password: args.get(2).cloned(),
+                history_visible: match args.get(3) {
+                    Some(v) => {
+                        if v == "n" {
+                            Some(false)
+                        } else {
+                            Some(true)
+                        }
+                    },
+                    None => Some(false),
+                },
+                send_str: None,
+            };
+            client.createroom().await?;
+        } else if args[0] == "join" {
+            client.req = clib::ClientReq {
+                roomname: Some(args[1].clone()),
+                room_password: args.get(2).cloned(),
+                history_visible: None,
+                send_str: None,
+            };
+
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let username = client.username.clone();
+            let handle = std::thread::spawn(move || {
+                loop {
+                    let inputmsg = prompt(format!("{}: ", username).as_str()).unwrap();
+                    if inputmsg.is_empty() {
+                        continue;
+                    }
+                    sender.send(inputmsg.clone()).unwrap();
+                    if inputmsg == "exit()" {
+                        dbg!(inputmsg);
+                        break;
+                    }
+                }
+            });
+
+            loop {
+                let tosd = receiver.try_recv();
+                if tosd.is_ok() {
+                    if tosd.as_ref().unwrap() == "exit()" {
+                        client.exitroom().await?;
+                        break;
+                    }
+                    client.req.send_str = Some(tosd.unwrap());
+                    client.send().await?;
+                } else {
+                    client.update().await?;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+
+            handle.join().unwrap();
+        } else if args[0] == "exit" {
+            break;
+        } else if args[0] == "list" {
+            client.listrooms().await?;            
+        } else {
+            println!("Unknown command");
+            dump_usage();
+        }
     }
+
+    Ok(())
 }
 
 

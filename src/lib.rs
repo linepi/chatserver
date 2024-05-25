@@ -6,42 +6,30 @@ pub mod chat {
     tonic::include_proto!("chat");
 }
 
-impl chat::HeartBeatRequest {
-    pub fn build(cli: &client::clib::Client) -> Self {
-        chat::HeartBeatRequest {
-            client: Some(chat::Client {
-                user: Some(chat::User {
-                    name: Some(cli.username.clone()),
-                    gender: Some(1),
-                }),
-                device: Some(chat::Device::default()),
-            }),
-            roomname: cli.roomname.clone(),
-            lasttime: cli.state.read().unwrap().lastupdate_time,
+use log::{Record, Level, Metadata};
+use log::{SetLoggerError, LevelFilter};
+
+struct SimpleLogger;
+
+impl log::Log for SimpleLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= Level::Trace
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            println!("{} - {}", record.level(), record.args());
         }
     }
+
+    fn flush(&self) {}
 }
 
-impl chat::SendRequest {
-    pub fn build(cli: &client::clib::Client, s: &String) -> Self {
-        let c = Some(chat::Client {
-            user: Some(chat::User {
-                name: Some(cli.username.clone()),
-                gender: Some(1),
-            }),
-            device: Some(chat::Device::default()),
-        });
-        chat::SendRequest {
-            client: c.clone(),
-            roomname: cli.roomname.clone(),
-            message: Some(chat::Message{
-                client: c.clone(),
-                bytes: s.as_bytes().to_vec(),
-                time: common::now_milli_seconds(),
-                msg_type: chat::MessageType::Text as i32,
-            }),
-        }
-    }
+static LOGGER: SimpleLogger = SimpleLogger;
+
+pub fn log_init() -> Result<(), SetLoggerError> {
+    log::set_logger(&LOGGER)
+        .map(|()| log::set_max_level(LevelFilter::Info))
 }
 
 impl std::fmt::Display for chat::Message {
@@ -70,3 +58,8 @@ impl chat::Room {
     }
 }
 
+impl chat::Client {
+    pub fn username(&self) -> String {
+        self.user.as_ref().unwrap().name.clone().unwrap()
+    }
+}

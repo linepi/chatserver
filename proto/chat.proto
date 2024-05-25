@@ -6,20 +6,41 @@ message SendRequest {
     Client client = 1;
     Message message = 2;
     string roomname = 3;
+    optional string room_password = 4;
 }
 
 message HeartBeatRequest {
     Client client = 1;
     string roomname = 2;
+    optional string room_password = 3;
     // 上一次心跳的时间
-    uint64 lasttime = 3;
+    uint64 lasttime = 4;
+}
+
+message GetRoomsRequest {
+    Client client = 1;
+}
+
+message ExitRoomRequest {
+    Client client = 1;
+    string roomname = 2;
+}
+
+message CreateRoomRequest {
+    Client client = 1;
+    string roomname = 2;
+    optional string password = 3;
+    bool history_visible = 4;
 }
 
 service Chat {
+    rpc getrooms (GetRoomsRequest) returns (ServerResponse) {}     
+    rpc createroom (CreateRoomRequest) returns (ServerResponse) {}
     // 心跳，客户端每隔一段时间会调用此rpc来：
     // 1. 确认与服务器的连接正常
     // 2. 获取他人新发的信息
     rpc heartbeat (HeartBeatRequest) returns (ServerResponse) {}
+    rpc exitroom (ExitRoomRequest) returns (ServerResponse) {}
     // 发送信息
     rpc send (SendRequest) returns (ServerResponse) {} 
 }
@@ -51,6 +72,7 @@ message User {
 message ServerResponse {
     string extra_info = 1;
     repeated Message messages = 2;
+    repeated RoomInfo roominfos = 3;
 }
 
 enum MessageType {
@@ -72,6 +94,11 @@ message Message {
     uint64 time = 4;
 }
 
+message RoomInfo {
+    string name = 1;
+    Client manner = 2;
+}
+
 // room 
 message Room {
     string name = 1;
@@ -80,4 +107,5 @@ message Room {
     Client manner = 4;
     repeated Client clients = 5;
     bool history_visible = 6;
+    optional string password = 7;
 }
