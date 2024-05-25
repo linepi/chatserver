@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 use std::time::*;
 use crate::chat;
 use std::sync::RwLockReadGuard;

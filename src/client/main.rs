@@ -1,6 +1,17 @@
+#![allow(dead_code)]
+
 use chatserver::client::clib;
 use colored::Colorize;
 use chatserver::chat::chat_client::ChatClient;
+use clap::Parser;
+
+#[derive(Debug, Parser)]
+#[command(version, about)]
+struct Args {
+    #[arg(long)]
+    address: String,
+}
+
 fn prompt(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
     print!("{prompt}");
     use std::io::Write;
@@ -42,10 +53,10 @@ fn dump_usage() {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // let addr = prompt("chat server address: ").unwrap();
-    let addr = SERVER_ADDR.to_string();
-    // let username = prompt("give your username: ").unwrap();
-    let username = random_name();
+    let args = Args::parse();
+    let addr = args.address;
+    let username = prompt("give your username: ").unwrap();
+    // let username = random_name();
 
     let clientstate = std::sync::Arc::new(std::sync::RwLock::new(clib::ClientState{
         channel: ChatClient::connect(format!("http://{addr}")).await?,

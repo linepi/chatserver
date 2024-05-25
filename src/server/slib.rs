@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 use tonic::{Request, Response, Status};
 use std::sync::RwLock;
 use crate::chat;
