@@ -23,8 +23,8 @@ pub fn human_milli_seconds(millis: u64) -> String {
 }
 
 pub fn client_equal(c1: &chat::Client, c2: &chat::Client) -> bool{
-    let thisname = c1.user.as_ref().unwrap().name.as_ref().unwrap();
-    let othername = c2.user.as_ref().unwrap().name.as_ref().unwrap();
+    let thisname = &c1.user.as_ref().unwrap().name;
+    let othername = &c2.user.as_ref().unwrap().name;
     if thisname == othername {
         return true;
     }

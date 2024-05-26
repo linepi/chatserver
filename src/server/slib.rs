@@ -15,6 +15,7 @@ pub struct MyChatServer {
 #[derive(Default)]
 pub struct ServerState {
     rooms: Vec<RwLock<chat::Room>>,
+    users: Vec<RwLock<chat::User>>,
     // map roomname to a bunch of online users
     onlinemap: RwLock<HashMap<String, Vec<String>>>,
     uptime: u64,
@@ -35,6 +36,9 @@ impl MyChatServer {
                 if pathstr.contains("room") {
                     state.rooms.push(RwLock::new(chat::Room::from_file(&pathstr).unwrap()));
                     state.onlinemap.write().unwrap().insert(pathstr[10..].to_string(), vec![]);
+                }
+                if pathstr.contains("user") {
+                    state.users.push(RwLock::new(chat::User::from_file(&pathstr).unwrap()));
                 }
             }
         }
@@ -57,17 +61,66 @@ impl MyChatServer {
             let room_reader = room.read().unwrap();
             let _ = room_reader.to_file(&format!("data/room_{}", &room_reader.name));
         }
+        for user in self.state.read().unwrap().users.iter() {
+            let user_reader = user.read().unwrap();
+            let _ = user_reader.to_file(&format!("data/user_{}", user_reader.name));
+        }
     }
 }
 
 #[tonic::async_trait]
 impl Chat for MyChatServer {
+    // now signup and login is conbined together
+    async fn signup(
+        &self,
+        request: Request<chat::UserSignupRequest>
+    ) -> Result<Response<chat::ServerResponse>, Status> {
+        let req = request.into_inner();
+        let username = &req.client.as_ref().unwrap().user.as_ref().unwrap().name;
+        if req.client.is_none() {
+            log::error!("client is none");
+            return Err(Status::invalid_argument("client is none"));
+        }
+        if req.password.is_empty() { // create room
+            return Err(Status::invalid_argument("password is empty"));
+        }
+
+        let state = self.state.read().unwrap();
+        let user = state.users.iter().find(|u| {
+            let user_reader = u.read().unwrap();
+            user_reader.name == *username
+        });
+
+        let mut response = chat::ServerResponse::default();
+        // user not exist, signup
+        if user.is_none() {
+            drop(state);
+            let mut state_writer = self.state.write().unwrap();
+            state_writer.users.push(RwLock::new(chat::User{
+                name: username.clone(),
+                gender: Some(1),
+                password: req.password,
+            }));
+        } else {
+            // sign in
+            // check password
+            if user.unwrap().read().unwrap().password != req.password {
+                response.code = chat::ResponseCode::PasswordWrong as i32;
+            }
+        }
+
+        // TODO more efficient serialize
+        self.serialize();
+        
+        Ok(Response::new(response))
+    }
+
     async fn join(
         &self,
         request: Request<chat::JoinRequest>
     ) -> Result<Response<chat::ServerResponse>, Status> {
         let req = request.into_inner();
-        let username = req.client.as_ref().unwrap().user.as_ref().unwrap().name.as_ref().unwrap();
+        let username = &req.client.as_ref().unwrap().user.as_ref().unwrap().name;
         if req.client.is_none() {
             log::error!("client is none");
             return Err(Status::invalid_argument("client is none"));
@@ -109,7 +162,7 @@ impl Chat for MyChatServer {
     ) -> Result<Response<chat::ServerResponse>, Status> {
         // log::info!("Got a heartbeat request from {:?}", request.remote_addr());
         let req = request.into_inner();
-        let username = req.client.as_ref().unwrap().user.as_ref().unwrap().name.as_ref().unwrap();
+        let username = &req.client.as_ref().unwrap().user.as_ref().unwrap().name;
         if req.client.is_none() {
             log::error!("client is none");
             return Err(Status::invalid_argument("client is none"));
@@ -145,9 +198,6 @@ impl Chat for MyChatServer {
         &self, 
         request: Request<chat::SendRequest>
     ) -> Result<Response<chat::ServerResponse>, Status> {
-        // TODO more efficient serialize
-        self.serialize();
-
         log::info!("Got a send request from {:?}", request.remote_addr());
         let req = request.into_inner();
         if req.client.is_none() {
@@ -188,7 +238,13 @@ impl Chat for MyChatServer {
             &req.roomname);
         room_writer.messages.push(message.clone());
 
+        drop(room_writer);
+        // TODO more efficient serialize
+        self.serialize();
+
+
         Ok(Response::new(chat::ServerResponse::default()))
+
     }
 
     async fn getrooms(
@@ -213,6 +269,7 @@ impl Chat for MyChatServer {
                     Some(v) => v.to_vec(),
                     None => vec![],
                 },
+                password: x.read().unwrap().password.clone(),
             });
         });
         Ok(Response::new(response))
@@ -222,6 +279,7 @@ impl Chat for MyChatServer {
         &self, 
         request: Request<chat::CreateRoomRequest>
     ) -> Result<Response<chat::ServerResponse>, Status> {
+        log::info!("create room");
         let req = request.into_inner();
         if req.client.is_none() {
             log::error!("client is none");
@@ -257,6 +315,11 @@ impl Chat for MyChatServer {
             password: req.password,
         }));
         state_writer.onlinemap.write().unwrap().insert(req.roomname.clone(), vec![]);
+
+        // TODO more efficient serialize
+        drop(state_writer);
+        self.serialize();
+
         Ok(Response::new(response))
 
     }

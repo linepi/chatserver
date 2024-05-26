@@ -55,8 +55,6 @@ fn dump_usage() {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let addr = args.address;
-    let username = prompt("give your username: ").unwrap();
-    // let username = random_name();
 
     let clientstate = std::sync::Arc::new(std::sync::RwLock::new(clib::ClientState{
         channel: ChatClient::connect(format!("http://{addr}")).await?,
@@ -64,17 +62,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cur_roomname: None,
         msgnum: 0,
     }));
-
     println!("Connected to {}!", SERVER_ADDR);
     println!();
 
+    let username = prompt("give your username: ").unwrap();
+    let password = prompt("give your password: ").unwrap();
     let mut client = clib::Client {
         req: clib::ClientReq::default(),
         state: clientstate,
         username: username.clone(),
+        password: password.clone(),
     };
 
-    println!("{}", "Welcome to chat room!".cyan().bold());
+    loop {
+        let result = client.signup().await;
+        match result {
+            Ok(_) => { break; }
+            Err(e) => { println!("{}", e); }
+        }
+        client.password = prompt("give your password: ").unwrap();
+    }
+
+    println!("{}, {}", username, "Welcome to chat room!".cyan().bold());
     dump_usage();
 
     loop {

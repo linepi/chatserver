@@ -8,6 +8,7 @@ use colored::Colorize;
 pub struct Client {
     pub state: Arc<RwLock<ClientState>>,
     pub username: String,
+    pub password: String,
     pub req: ClientReq,
 }
 
@@ -67,7 +68,7 @@ impl Client {
             printlines.push(response.extra_info.clone());
         }
         for msg in response.messages.iter() {
-            let msg_username = msg.client.as_ref().unwrap().user.as_ref().unwrap().name.as_ref().unwrap();
+            let msg_username = &msg.client.as_ref().unwrap().user.as_ref().unwrap().name;
             if *msg_username != self.username {
                 printlines.push(format!("{}", msg).clone());
             }
@@ -89,6 +90,16 @@ impl Client {
     pub async fn send(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut state = self.state.write().unwrap();
         state.channel.send(tonic::Request::new(self.sd_req())).await?;
+        Ok(())
+    }
+
+    pub async fn signup(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = self.state.write().unwrap();
+        let response_wrapper = state.channel.signup(tonic::Request::new(self.su_req())).await?;
+        let response = response_wrapper.get_ref();
+        if response.code == chat::ResponseCode::PasswordWrong as i32 {
+            return Err(anyhow::anyhow!("Password is wrong").into());
+        }
         Ok(())
     }
 
@@ -129,7 +140,8 @@ impl Client {
         chat::HeartBeatRequest {
             client: Some(chat::Client {
                 user: Some(chat::User {
-                    name: Some(self.username.clone()),
+                    name: self.username.clone(),
+                    password: self.password.clone(),
                     gender: Some(1),
                 }),
                 device: Some(chat::Device::default()),
@@ -145,7 +157,8 @@ impl Client {
         chat::JoinRequest {
             client: Some(chat::Client {
                 user: Some(chat::User {
-                    name: Some(self.username.clone()),
+                    name: self.username.clone(),
+                    password: self.password.clone(),
                     gender: Some(1),
                 }),
                 device: Some(chat::Device::default()),
@@ -155,11 +168,26 @@ impl Client {
         }
     }
 
+    fn su_req(&self) -> chat::UserSignupRequest {
+        chat::UserSignupRequest {
+            client: Some(chat::Client {
+                user: Some(chat::User {
+                    name: self.username.clone(),
+                    password: self.password.clone(),
+                    gender: Some(1),
+                }),
+                device: Some(chat::Device::default()),
+            }),
+            password: self.password.clone(),
+        }
+    }
+
     fn gr_req(&self) -> chat::GetRoomsRequest {
         chat::GetRoomsRequest {
             client: Some(chat::Client {
                 user: Some(chat::User {
-                    name: Some(self.username.clone()),
+                    name: self.username.clone(),
+                    password: self.password.clone(),
                     gender: Some(1),
                 }),
                 device: Some(chat::Device::default()),
@@ -171,7 +199,8 @@ impl Client {
         chat::CreateRoomRequest {
             client: Some(chat::Client {
                 user: Some(chat::User {
-                    name: Some(self.username.clone()),
+                    name: self.username.clone(),
+                    password: self.password.clone(),
                     gender: Some(1),
                 }),
                 device: Some(chat::Device::default()),
@@ -186,7 +215,8 @@ impl Client {
         chat::ExitRoomRequest {
             client: Some(chat::Client {
                 user: Some(chat::User {
-                    name: Some(self.username.clone()),
+                    name: self.username.clone(),
+                    password: self.password.clone(),
                     gender: Some(1),
                 }),
                 device: Some(chat::Device::default()),
@@ -198,7 +228,8 @@ impl Client {
     fn sd_req(&self) -> chat::SendRequest {
         let c = Some(chat::Client {
             user: Some(chat::User {
-                name: Some(self.username.clone()),
+                name: self.username.clone(),
+                password: self.password.clone(),
                 gender: Some(1),
             }),
             device: Some(chat::Device::default()),

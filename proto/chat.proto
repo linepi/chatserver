@@ -33,6 +33,11 @@ message ExitRoomRequest {
     string roomname = 2;
 }
 
+message UserSignupRequest {
+    Client client = 1;
+    string password = 2;
+}
+
 message CreateRoomRequest {
     Client client = 1;
     string roomname = 2;
@@ -51,6 +56,7 @@ service Chat {
     rpc exitroom (ExitRoomRequest) returns (ServerResponse) {}
     // 发送信息
     rpc send (SendRequest) returns (ServerResponse) {} 
+    rpc signup(UserSignupRequest) returns (ServerResponse) {}
 }
 
 // Client info
@@ -66,21 +72,27 @@ message Device {
 }
 
 enum Gender {
-    MALE = 0;
-    FEMALE = 1;
+    Male = 0;
+    Female = 1;
 }
 
 message User {
-    optional string name = 1;
-    optional Gender gender = 2;
+    string name = 1;
+    string password = 2;
+    optional Gender gender = 3;
+}
+
+enum ResponseCode {
+    Ok = 0;
+    PasswordWrong = 1;
 }
 
 // Server response
-
 message ServerResponse {
     string extra_info = 1;
-    repeated Message messages = 2;
-    repeated RoomInfo roominfos = 3;
+    ResponseCode code = 2;    
+    repeated Message messages = 3;
+    repeated RoomInfo roominfos = 4;
 }
 
 enum MessageType {
@@ -106,6 +118,7 @@ message RoomInfo {
     string name = 1;
     Client manner = 2;
     repeated string online_users = 3;
+    optional string password = 4;
 }
 
 // room 
