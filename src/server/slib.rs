@@ -62,6 +62,47 @@ impl MyChatServer {
 
 #[tonic::async_trait]
 impl Chat for MyChatServer {
+    async fn join(
+        &self,
+        request: Request<chat::JoinRequest>
+    ) -> Result<Response<chat::ServerResponse>, Status> {
+        let req = request.into_inner();
+        let username = req.client.as_ref().unwrap().user.as_ref().unwrap().name.as_ref().unwrap();
+        if req.client.is_none() {
+            log::error!("client is none");
+            return Err(Status::invalid_argument("client is none"));
+        }
+        if req.roomname.is_empty() { // create room
+            log::error!("roomname is none");
+            return Err(Status::invalid_argument("roomname is none"));
+        }
+
+        let roomname = req.roomname.clone();
+        let state = self.state.read().unwrap();
+        let room = state.rooms.iter().find(|x| {
+            let room_reader = x.read().unwrap();
+            room_reader.name == roomname
+        });
+
+        let mut response = chat::ServerResponse::default();
+        if room.is_none() {
+            return Err(Status::invalid_argument("join a non exist room"));
+        } 
+
+        let mut room_writer = room.unwrap().write().unwrap();
+        room_writer.clients.push(req.client.clone().unwrap());
+        response.messages = room_writer.messages.clone();
+
+        let mut map = state.onlinemap.write().unwrap();
+        let online_user_entry = map.get_mut(&roomname).unwrap();
+        if !online_user_entry.contains(username) {
+            online_user_entry.push(username.clone());
+        }
+
+        Ok(Response::new(response))
+
+    }
+
     async fn heartbeat(
         &self,
         request: Request<chat::HeartBeatRequest>
@@ -88,29 +129,14 @@ impl Chat for MyChatServer {
         let mut response = chat::ServerResponse::default();
         if room.is_none() {
             return Err(Status::invalid_argument("heartbeat a non exist room"));
-        } else {
-            // room found, check if client exists in this room
-            let room_reader = room.unwrap().read().unwrap();
-            // client existing in room is different from online in a room
-            let client_exist_in_room = common::client_in_room(req.client.as_ref().unwrap(), &room_reader);
-            if !client_exist_in_room {
-                // join room
-                drop(room_reader);
-                let mut room_writer = room.unwrap().write().unwrap();
-                room_writer.clients.push(req.client.clone().unwrap());
-                response.messages = room_writer.messages.clone();
-            } else {
-                // heart beat
-                for i in (req.msgnum as usize)..room_reader.messages.len() {
-                    response.messages.push(room_reader.messages[i].clone()); 
-                    log::info!("client [{}] recv new msg", username);
-                }
-            }
-            let mut map = state.onlinemap.write().unwrap();
-            let online_user_entry = map.get_mut(&roomname).unwrap();
-            if !online_user_entry.contains(username) {
-                online_user_entry.push(username.clone());
-            }
+        }
+
+        // room found, check if client exists in this room
+        let room_reader = room.unwrap().read().unwrap();
+        assert!(common::client_in_room(req.client.as_ref().unwrap(), &room_reader));
+        for i in (req.msgnum as usize)..room_reader.messages.len() {
+            response.messages.push(room_reader.messages[i].clone()); 
+            log::info!("client [{}] recv new msg", username);
         }
         Ok(Response::new(response))
     }

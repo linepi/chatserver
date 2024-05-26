@@ -27,15 +27,42 @@ pub struct ClientState {
 }
 
 impl Client {
+    pub async fn join(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let request = self.jn_req();
+
+        let mut state = self.state.write().unwrap();
+        let response_wrapper = state.channel.join(tonic::Request::new(request)).await?;
+        let response = response_wrapper.get_ref();
+        state.msgnum += response.messages.len() as u32;
+        state.cur_roomname = self.req.roomname.clone();
+        drop(state);
+
+        let mut printlines = Vec::<String>::new();
+        if !response.extra_info.is_empty() {
+            printlines.push(response.extra_info.clone());
+        }
+        for msg in response.messages.iter() {
+            printlines.push(format!("{}", msg).clone());
+        } 
+        
+        if printlines.len() > 0 {
+            print!("\r");
+            for line in printlines {
+                println!("{line}");
+            }
+        }
+        Ok(())
+    }
+
     pub async fn update(&self) -> Result<(), Box<dyn std::error::Error>> {
         let request = self.hb_req();
         let mut state = self.state.write().unwrap();
-        let lastupdate_time = common::now_milli_seconds();
-
         let response_wrapper = state.channel.heartbeat(tonic::Request::new(request)).await?;
-        let mut printlines = Vec::<String>::new();
-
         let response = response_wrapper.get_ref();
+        state.msgnum += response.messages.len() as u32;
+        drop(state);
+
+        let mut printlines = Vec::<String>::new();
         if !response.extra_info.is_empty() {
             printlines.push(response.extra_info.clone());
         }
@@ -56,9 +83,6 @@ impl Client {
             let _ = std::io::stdout().flush();
         }
 
-        state.lastupdate_time = lastupdate_time;
-        state.msgnum += response.messages.len() as u32;
-        state.cur_roomname = self.req.roomname.clone();
         Ok(())
     }
 
@@ -114,6 +138,20 @@ impl Client {
             room_password: self.req.room_password.clone(), 
             lasttime: self.state.read().unwrap().lastupdate_time,
             msgnum: self.state.read().unwrap().msgnum,
+        }
+    }
+
+    fn jn_req(&self) -> chat::JoinRequest {
+        chat::JoinRequest {
+            client: Some(chat::Client {
+                user: Some(chat::User {
+                    name: Some(self.username.clone()),
+                    gender: Some(1),
+                }),
+                device: Some(chat::Device::default()),
+            }),
+            roomname: self.req.roomname.clone().unwrap(),
+            room_password: self.req.room_password.clone(), 
         }
     }
 

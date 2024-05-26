@@ -110,6 +110,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 send_str: None,
             };
 
+            client.join().await?;
+
             let (sender, receiver) = std::sync::mpsc::channel();
             let username = client.username.clone();
             let handle = std::thread::spawn(move || {

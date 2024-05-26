@@ -18,6 +18,12 @@ message HeartBeatRequest {
     uint32 msgnum = 5;
 }
 
+message JoinRequest {
+    Client client = 1;
+    string roomname = 2;
+    optional string room_password = 3;
+}
+
 message GetRoomsRequest {
     Client client = 1;
 }
@@ -41,6 +47,7 @@ service Chat {
     // 1. 确认与服务器的连接正常
     // 2. 获取他人新发的信息
     rpc heartbeat (HeartBeatRequest) returns (ServerResponse) {}
+    rpc join (JoinRequest) returns (ServerResponse) {}     
     rpc exitroom (ExitRoomRequest) returns (ServerResponse) {}
     // 发送信息
     rpc send (SendRequest) returns (ServerResponse) {} 
