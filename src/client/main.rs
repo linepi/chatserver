@@ -41,8 +41,6 @@ fn random_name() -> String {
     String::from_utf8(res).unwrap()
 }
 
-const SERVER_ADDR: &str = "localhost:15535";
-
 fn dump_usage() {
     println!("{}", "Usage: ".green());
     println!("\tcreate <roomname> [password] [history_visible(y/n)]");
@@ -62,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cur_roomname: None,
         msgnum: 0,
     }));
-    println!("Connected to {}!", SERVER_ADDR);
+    println!("Connected to {}!", addr);
     println!();
 
     let username = prompt("give your username: ").unwrap();

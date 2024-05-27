@@ -3,8 +3,10 @@ use chatserver::chat::chat_server::ChatServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "127.0.0.1:15535".parse().unwrap();
-    let mychatserver = slib::MyChatServer::init().unwrap();
+    let mut mychatserver = slib::MyChatServer::default();
+    mychatserver.config.read_file("src/server/config");
+    mychatserver.init()?;
+    let addr = mychatserver.config.addr.parse().unwrap();
     chatserver::log_init().unwrap();
 
     tonic::transport::Server::builder()

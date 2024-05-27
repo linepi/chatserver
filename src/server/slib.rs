@@ -2,14 +2,32 @@
 
 use tonic::{Request, Response, Status};
 use std::sync::RwLock;
+use std::sync::Arc;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use crate::chat;
 use crate::chat::chat_server::Chat;
 use crate::common;
 
 #[derive(Default)]
+pub struct Config {
+    pub addr: String,
+    pub datapath: String,
+}
+
+impl Config {
+    pub fn read_file(&mut self, path: &str) {
+        let content = String::from_utf8(std::fs::read(path).unwrap()).unwrap(); 
+        let lines: Vec<&str> = content.split_whitespace().collect();
+        self.addr = lines[0].to_string();
+        self.datapath = lines[1].to_string();
+    }
+}
+
+#[derive(Default)]
 pub struct MyChatServer {
     state: RwLock<ServerState>,
+    pub config: Config,
 }
 
 #[derive(Default)]
@@ -17,34 +35,60 @@ pub struct ServerState {
     rooms: Vec<RwLock<chat::Room>>,
     users: Vec<RwLock<chat::User>>,
     // map roomname to a bunch of online users
-    onlinemap: RwLock<HashMap<String, Vec<String>>>,
-    uptime: u64,
+    onlinemap: Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    // note the latest time of user action at room
+    clientuptime: Arc<RwLock<HashMap<String, u64>>>,
+    uptime: Arc<RwLock<u64>>,
 }
 
 impl MyChatServer {
-    pub fn init() -> Result<Self, Box<dyn std::error::Error>> {
-        let serv = MyChatServer::default();
-        let mut state = serv.state.write().unwrap();
+    pub fn init(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = self.state.write().unwrap();
         {
-            std::fs::create_dir_all("data")?;
+            std::fs::create_dir_all(&self.config.datapath)?;
             // for simplisity, load all roominfos
-            let readdir = std::fs::read_dir("data")?;
+            let readdir = std::fs::read_dir(&self.config.datapath)?;
             for diri in readdir {
                 let entry = diri?;
                 let path = entry.path();
                 let pathstr = path.to_str().unwrap().to_string();
                 if pathstr.contains("room") {
                     state.rooms.push(RwLock::new(chat::Room::from_file(&pathstr).unwrap()));
-                    state.onlinemap.write().unwrap().insert(pathstr[10..].to_string(), vec![]);
+                    state.onlinemap.write().unwrap().insert(
+                        pathstr[self.config.datapath.len()+6..].to_string(), HashSet::new());
                 }
                 if pathstr.contains("user") {
                     state.users.push(RwLock::new(chat::User::from_file(&pathstr).unwrap()));
                 }
             }
         }
-        state.uptime = common::now_milli_seconds();
+        *state.uptime.write().unwrap() = common::now_milli_seconds();
+        let uptime = Arc::clone(&state.uptime);
+        let onlinemap = Arc::clone(&state.onlinemap);
+        let clientuptime = Arc::clone(&state.clientuptime);
         drop(state);
-        Ok(serv)
+
+        std::thread::spawn(move || loop {
+            let uptimeval = common::now_milli_seconds();
+            *uptime.write().unwrap() = uptimeval;
+
+            let mut om_writer = onlinemap.write().unwrap();
+            for (_roomname, onlineset) in om_writer.iter_mut() {
+                if onlineset.is_empty() {
+                    continue;
+                }
+                let cu_reader = clientuptime.read().unwrap(); 
+                for (username, t) in cu_reader.iter() {
+                    if uptimeval > *t && uptimeval - *t > 5000 {
+                        println!("{:?} remove {}", onlineset, username);
+                        onlineset.remove(username);
+                    }
+                }
+            }
+            drop(om_writer);
+            std::thread::sleep(std::time::Duration::from_millis(1000));    
+        });
+        Ok(())
     }
 }
 
@@ -57,13 +101,14 @@ impl Drop for MyChatServer {
 
 impl MyChatServer {
     fn serialize(&self) {
+        let datapath = &self.config.datapath;
         for room in self.state.read().unwrap().rooms.iter() {
             let room_reader = room.read().unwrap();
-            let _ = room_reader.to_file(&format!("data/room_{}", &room_reader.name));
+            let _ = room_reader.to_file(&format!("{}/room_{}", datapath, &room_reader.name));
         }
         for user in self.state.read().unwrap().users.iter() {
             let user_reader = user.read().unwrap();
-            let _ = user_reader.to_file(&format!("data/user_{}", user_reader.name));
+            let _ = user_reader.to_file(&format!("{}/user_{}", datapath, user_reader.name));
         }
     }
 }
@@ -84,6 +129,7 @@ impl Chat for MyChatServer {
         if req.password.is_empty() { // create room
             return Err(Status::invalid_argument("password is empty"));
         }
+        log::info!("try signup: username: {}, password: {}", username, &req.password);
 
         let state = self.state.read().unwrap();
         let user = state.users.iter().find(|u| {
@@ -143,14 +189,13 @@ impl Chat for MyChatServer {
         } 
 
         let mut room_writer = room.unwrap().write().unwrap();
-        room_writer.clients.push(req.client.clone().unwrap());
+        if !room_writer.clients.contains(&(req.client.clone().unwrap())) {
+            room_writer.clients.push(req.client.clone().unwrap());
+        }
         response.messages = room_writer.messages.clone();
 
         let mut map = state.onlinemap.write().unwrap();
-        let online_user_entry = map.get_mut(&roomname).unwrap();
-        if !online_user_entry.contains(username) {
-            online_user_entry.push(username.clone());
-        }
+        map.get_mut(&roomname).unwrap().insert(username.clone());
 
         Ok(Response::new(response))
 
@@ -191,6 +236,10 @@ impl Chat for MyChatServer {
             response.messages.push(room_reader.messages[i].clone()); 
             log::info!("client [{}] recv new msg", username);
         }
+
+        // update clientuptime
+        let mut clientuptime = state.clientuptime.write().unwrap();
+        clientuptime.insert(username.clone(), common::now_milli_seconds());
         Ok(Response::new(response))
     }
 
@@ -242,9 +291,7 @@ impl Chat for MyChatServer {
         // TODO more efficient serialize
         self.serialize();
 
-
         Ok(Response::new(chat::ServerResponse::default()))
-
     }
 
     async fn getrooms(
@@ -266,7 +313,9 @@ impl Chat for MyChatServer {
                 name: roomname.to_string(),
                 manner: x.read().unwrap().manner.clone(),
                 online_users: match map.get(roomname) {
-                    Some(v) => v.to_vec(),
+                    Some(v) => { 
+                        v.iter().map(|s_ref| s_ref.clone()).collect()
+                    },
                     None => vec![],
                 },
                 password: x.read().unwrap().password.clone(),
@@ -314,7 +363,7 @@ impl Chat for MyChatServer {
             name: req.roomname.clone(),
             password: req.password,
         }));
-        state_writer.onlinemap.write().unwrap().insert(req.roomname.clone(), vec![]);
+        state_writer.onlinemap.write().unwrap().insert(req.roomname.clone(), HashSet::new());
 
         // TODO more efficient serialize
         drop(state_writer);
@@ -340,19 +389,7 @@ impl Chat for MyChatServer {
 
         let state_reader = self.state.read().unwrap();
         let mut map = state_reader.onlinemap.write().unwrap();
-        let entry = map.get_mut(&req.roomname).unwrap();
-        assert_eq!(entry.iter().filter(|username|
-            **username == req.client.as_ref().unwrap().username()
-        ).count(), 1);
-
-        let mut index: usize = 0;
-        for i in 0..entry.len() {
-            if entry[i] == req.client.as_ref().unwrap().username() {
-                index = i;
-                break;
-            }
-        }
-        entry.remove(index);
+        map.get_mut(&req.roomname).unwrap().remove(&req.client.as_ref().unwrap().username());
         Ok(Response::new(chat::ServerResponse::default()))
     }
 }
