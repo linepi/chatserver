@@ -80,7 +80,7 @@ impl MyChatServer {
                 let cu_reader = clientuptime.read().unwrap(); 
                 for (username, t) in cu_reader.iter() {
                     if uptimeval > *t && uptimeval - *t > 5000 {
-                        println!("{:?} remove {}", onlineset, username);
+                        // println!("{:?} remove {}", onlineset, username);
                         onlineset.remove(username);
                     }
                 }
@@ -320,6 +320,25 @@ impl Chat for MyChatServer {
                 },
                 password: x.read().unwrap().password.clone(),
             });
+        });
+        Ok(Response::new(response))
+    }
+
+    async fn getusers(
+        &self, 
+        request: Request<chat::GetUsersRequest>
+    ) -> Result<Response<chat::ServerResponse>, Status> {
+        let req = request.into_inner();
+        if req.client.is_none() {
+            log::error!("client is none");
+            return Err(Status::invalid_argument("client is none"));
+        }
+
+        let state = self.state.read().unwrap();
+        let mut response = chat::ServerResponse::default();
+        state.users.iter().for_each(|x| {
+            let user = x.read().unwrap();
+            response.users.push(user.clone());
         });
         Ok(Response::new(response))
     }

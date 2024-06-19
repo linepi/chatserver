@@ -136,6 +136,16 @@ impl Client {
         Ok(())
     }
 
+    pub async fn listusers(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = self.state.write().unwrap();
+        let response_wrapper = state.channel.getusers(tonic::Request::new(self.gu_req())).await?;
+        let response = response_wrapper.get_ref();
+        for user in response.users.iter() {
+            println!("{}", user.name);
+        }
+        Ok(())
+    }
+
     fn hb_req(&self) -> chat::HeartBeatRequest {
         chat::HeartBeatRequest {
             client: Some(chat::Client {
@@ -184,6 +194,19 @@ impl Client {
 
     fn gr_req(&self) -> chat::GetRoomsRequest {
         chat::GetRoomsRequest {
+            client: Some(chat::Client {
+                user: Some(chat::User {
+                    name: self.username.clone(),
+                    password: self.password.clone(),
+                    gender: Some(1),
+                }),
+                device: Some(chat::Device::default()),
+            }),
+        }
+    }
+
+    fn gu_req(&self) -> chat::GetUsersRequest {
+        chat::GetUsersRequest {
             client: Some(chat::Client {
                 user: Some(chat::User {
                     name: self.username.clone(),

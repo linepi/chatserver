@@ -45,7 +45,8 @@ fn dump_usage() {
     println!("{}", "Usage: ".green());
     println!("\tcreate <roomname> [password] [history_visible(y/n)]");
     println!("\texit -- let it go");
-    println!("\tlist -- list rooms");
+    println!("\tlistr -- list rooms");
+    println!("\tlistu -- list users");
     println!("\tjoin <roomname> [password]");
 }
 
@@ -152,8 +153,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             handle.join().unwrap();
         } else if args[0] == "exit" {
             break;
-        } else if args[0] == "list" {
+        } else if args[0] == "listr" {
             client.listrooms().await?;            
+        } else if args[0] == "listu" {
+            client.listusers().await?;            
         } else {
             println!("Unknown command");
             dump_usage();

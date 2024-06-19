@@ -28,6 +28,10 @@ message GetRoomsRequest {
     Client client = 1;
 }
 
+message GetUsersRequest {
+    Client client = 1;
+}
+
 message ExitRoomRequest {
     Client client = 1;
     string roomname = 2;
@@ -47,6 +51,7 @@ message CreateRoomRequest {
 
 service Chat {
     rpc getrooms (GetRoomsRequest) returns (ServerResponse) {}     
+    rpc getusers (GetUsersRequest) returns (ServerResponse) {}     
     rpc createroom (CreateRoomRequest) returns (ServerResponse) {}
     // 心跳，客户端每隔一段时间会调用此rpc来：
     // 1. 确认与服务器的连接正常
@@ -93,6 +98,7 @@ message ServerResponse {
     ResponseCode code = 2;    
     repeated Message messages = 3;
     repeated RoomInfo roominfos = 4;
+    repeated User users = 5;
 }
 
 enum MessageType {
